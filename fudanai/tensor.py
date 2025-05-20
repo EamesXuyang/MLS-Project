@@ -46,6 +46,17 @@ class Tensor:
         if self.grad is not None:
             self.grad.data.fill(0)
             
+    def __neg__(self) -> 'Tensor':
+        result = Tensor(-self.data, requires_grad=self.requires_grad)
+        
+        if result.requires_grad:
+            def _backward(grad):
+                self.backward(-grad)
+            result._grad_fn = _backward
+            result.is_leaf = False
+            
+        return result
+            
     def __add__(self, other: Union['Tensor', float]) -> 'Tensor':
         other = other if isinstance(other, Tensor) else Tensor(other)
         result = Tensor(self.data + other.data, requires_grad=self.requires_grad or other.requires_grad)
@@ -61,6 +72,27 @@ class Tensor:
             
         return result
         
+    def __radd__(self, other: Union['Tensor', float]) -> 'Tensor':
+        return self + other
+        
+    def __sub__(self, other: Union['Tensor', float]) -> 'Tensor':
+        other = other if isinstance(other, Tensor) else Tensor(other)
+        result = Tensor(self.data - other.data, requires_grad=self.requires_grad or other.requires_grad)
+        
+        if result.requires_grad:
+            def _backward(grad):
+                if self.requires_grad:
+                    self.backward(grad)
+                if other.requires_grad:
+                    other.backward(-grad)
+            result._grad_fn = _backward
+            result.is_leaf = False
+            
+        return result
+        
+    def __rsub__(self, other: Union['Tensor', float]) -> 'Tensor':
+        return -self + other
+        
     def __mul__(self, other: Union['Tensor', float]) -> 'Tensor':
         other = other if isinstance(other, Tensor) else Tensor(other)
         result = Tensor(self.data * other.data, requires_grad=self.requires_grad or other.requires_grad)
@@ -75,6 +107,47 @@ class Tensor:
             result.is_leaf = False
             
         return result
+        
+    def __rmul__(self, other: Union['Tensor', float]) -> 'Tensor':
+        return self * other
+        
+    def __truediv__(self, other: Union['Tensor', float]) -> 'Tensor':
+        other = other if isinstance(other, Tensor) else Tensor(other)
+        result = Tensor(self.data / other.data, requires_grad=self.requires_grad or other.requires_grad)
+        
+        if result.requires_grad:
+            def _backward(grad):
+                if self.requires_grad:
+                    self.backward(grad / other.data)
+                if other.requires_grad:
+                    other.backward(-grad * self.data / (other.data * other.data))
+            result._grad_fn = _backward
+            result.is_leaf = False
+            
+        return result
+        
+    def __rtruediv__(self, other: Union['Tensor', float]) -> 'Tensor':
+        other = other if isinstance(other, Tensor) else Tensor(other)
+        return other / self
+        
+    def __pow__(self, other: Union['Tensor', float]) -> 'Tensor':
+        other = other if isinstance(other, Tensor) else Tensor(other)
+        result = Tensor(self.data ** other.data, requires_grad=self.requires_grad or other.requires_grad)
+        
+        if result.requires_grad:
+            def _backward(grad):
+                if self.requires_grad:
+                    self.backward(grad * other.data * (self.data ** (other.data - 1)))
+                if other.requires_grad:
+                    other.backward(grad * (self.data ** other.data) * np.log(self.data))
+            result._grad_fn = _backward
+            result.is_leaf = False
+            
+        return result
+        
+    def __rpow__(self, other: Union['Tensor', float]) -> 'Tensor':
+        other = other if isinstance(other, Tensor) else Tensor(other)
+        return other ** self
         
     def __matmul__(self, other: 'Tensor') -> 'Tensor':
         result = Tensor(self.data @ other.data, requires_grad=self.requires_grad or other.requires_grad)
@@ -99,6 +172,17 @@ class Tensor:
                     grad = np.expand_dims(grad, axis)
                 grad_expanded = np.broadcast_to(grad, self.shape)
                 self.backward(grad_expanded)
+            result._grad_fn = _backward
+            result.is_leaf = False
+            
+        return result
+        
+    def log(self) -> 'Tensor':
+        result = Tensor(np.log(self.data), requires_grad=self.requires_grad)
+        
+        if result.requires_grad:
+            def _backward(grad):
+                self.backward(grad / self.data)
             result._grad_fn = _backward
             result.is_leaf = False
             
