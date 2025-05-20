@@ -1,4 +1,8 @@
 import numpy as np
+import sys
+import os
+# 添加上一级目录到模块搜索路径中
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from fudanai.tensor import Tensor
 from fudanai.layers.conv import Conv2d
 from fudanai.layers.linear import Linear
