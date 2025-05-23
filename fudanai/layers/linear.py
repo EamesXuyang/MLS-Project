@@ -25,6 +25,6 @@ class Linear(Layer):
         output = x @ self.params["weight"]
         
         if self.params["bias"] is not None:
-            output = output + self.params["bias"].data
+            output = output + self.params["bias"]
             
         return output 

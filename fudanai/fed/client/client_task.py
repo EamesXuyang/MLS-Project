@@ -10,11 +10,12 @@ class TaskStatus(Enum):
 
 
 class ClientTask:
-    def __init__(self, name, server):
+    def __init__(self, name, server, client):
         self.name = name
         self.server = server
+        self.client = client
         self.params_buffer = None
-        self.stataus = TaskStatus.INIT
+        self.status = TaskStatus.INIT
 
     def init_params(self, epochs, params):
         self.epochs = epochs
@@ -25,10 +26,12 @@ class ClientTask:
         if self.status == TaskStatus.INIT:
             return None
         else:
+            self.stataus = TaskStatus.RUNNING
             return self.epochs, self.params_buffer
 
 
     def get_params(self):
+        self.stataus = TaskStatus.RUNNING
         return self.params_buffer
     
     def clean_params(self):

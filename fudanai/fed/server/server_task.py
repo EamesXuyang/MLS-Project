@@ -1,6 +1,7 @@
 import requests
 from urllib.parse import urljoin
 from enum import Enum
+from ..util import encode_parameters, decode_parameters
 
 class ClientStatus(Enum):
     INIT = 0
@@ -14,45 +15,43 @@ class TaskStatus(Enum):
     FINISHED = 3
 
 class ServerTask:
-    def __init__(self, name, client_num, model, epochs, aggregate_func):
+    def __init__(self, name, client_num, epochs, aggregate_func, params):
         self.name = name
-        self.clent_num = client_num
-        self.model = model
+        self.client_num = client_num
+        self.params = params
         self.epochs = epochs
         self.completed_epoch = 0
         self.aggregate_func = aggregate_func
         self.clients = {}
-        self.params = {}
+        self.client_params = {}
         self.status = TaskStatus.INIT
 
     def add_client(self, client):
         if len(self.clients) < self.client_num:
             self.clients[client] = ClientStatus.INIT
-            self.params[client] = None
+            self.client_params[client] = None
         else:
             return False
 
         if len(self.clients) == self.client_num:
             for client in self.clients:
-                # TODO
-                requests.post(urljoin(client, 'init_model'), files={'params': self.model}, json={'task': self.name, 'epoch': self.epochs})
+                requests.post(urljoin(client, f'{self.name}/send_init_params', ), json={'epochs': self.epochs, 'params': encode_parameters(self.params)})
                 self.clients[client] = ClientStatus.RUNNING
             self.status = TaskStatus.WAITING
         return True
 
     def update_client(self, client, params):
-        self.params[client] = params
+        self.client_params[client] = params
         self.clients[client] = ClientStatus.FINISHED
 
         if all(self.clients[client] == ClientStatus.FINISHED for client in self.clients):
             self.status = TaskStatus.AGGREGATING
 
-            self.model = self.aggregate_func(self.params)
+            self.params = self.aggregate_func(self.client_params)
             self.completed_epoch += 1
             if self.completed_epoch < self.epochs:
                 for client in self.clients:
-                    # TODO
-                    requests.post(urljoin(client, 'send_model'), files={'params': self.model}, json={'task': self.name})
+                    requests.post(urljoin(client, f'{self.name}/send_params_to_client'), json={'task': self.name, 'params': encode_parameters(self.params)})
                     self.clients[client] = ClientStatus.RUNNING
                 self.status = TaskStatus.WAITING
             else:

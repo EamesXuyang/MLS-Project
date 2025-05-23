@@ -48,4 +48,4 @@ class Layer:
                 else:
                     raise KeyError(f'Cannot find Layer for key: {key} in path {full_key}')
             last_key = keys[-1]
-            current.params[last_key] = value
+            current.params[last_key].data = value.data

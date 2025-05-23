@@ -4,7 +4,7 @@ import requests
 from ..aggregate import aggregate_funcs
 from .server_task import ServerTask
 import pickle
-
+from ..util import encode_parameters, decode_parameters
 app = Flask(__name__)
 
 
@@ -18,11 +18,11 @@ def create_task():
         return jsonify({"error": "Task already exists"}), 400
 
     client_num = data['client_num']
-    model = data['model']
     epoch = data['epoch']
     aggregate_func = aggregate_funcs[data['aggregate_func']]
+    params = decode_parameters(data['params'])
 
-    task = ServerTask(name, client_num, model, epoch, aggregate_func)
+    task = ServerTask(name, client_num, epoch, aggregate_func, params)
     tasks[name] = task
     return jsonify({"message": f"Task '{name}' created"}), 201
 
@@ -31,7 +31,7 @@ def add_client(task_name):
     if task_name not in tasks:
         return jsonify({"error": "Task not found"}), 404
 
-    client_url = request.json.get('client_url')
+    client_url = request.json.get('client')
     success = tasks[task_name].add_client(client_url)
     if not success:
         return jsonify({"error": "Max clients reached or task full"}), 400
@@ -42,20 +42,20 @@ def update_client(task_name):
     if task_name not in tasks:
         return jsonify({"error": "Task not found"}), 404
 
-    client_url = request.json.get('client_url')
-    params_file = request.files.get('params')
-    try:
-        params = pickle.load(params_file.stream)  # 从文件流中反序列化
-    except Exception as e:
-        return jsonify({"error": f"Failed to load parameters: {str(e)}"}), 500
-    
+    data = request.json
+    client_url = data['client']
+
     if client_url not in tasks[task_name].clients:
         return jsonify({"error": "Client not registered"}), 400
+
+    params = data['params']
+
+    params = decode_parameters(params)
 
     tasks[task_name].update_client(client_url, params)
     return jsonify({
         "message": f"Client {client_url} updated",
-        "task_status": tasks[task_name].get_status()
+        "task_status": tasks[task_name].get_status().value
     }), 200
 
 @app.route('/<task_name>/status', methods=['GET'])
@@ -71,6 +71,4 @@ def task_status(task_name):
     }), 200
 
 if __name__ == '__main__':
-    import sys
-    port = int(sys.argv[1]) if len(sys.argv) > 1 else 5000
-    app.run(host='0.0.0.0', port=port, debug=True)
+    app.run(host='0.0.0.0', port=5000)

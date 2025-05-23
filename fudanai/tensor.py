@@ -46,6 +46,19 @@ class Tensor:
         if self.grad is not None:
             self.grad.data.fill(0)
             
+    def unbroadcast_to(self, grad: np.ndarray, shape: Tuple[int, ...]) -> np.ndarray:
+        """
+        将 grad 从广播后的形状还原回 shape。
+        """
+        # 多余的维度先 sum 掉
+        while grad.ndim > len(shape):
+            grad = grad.sum(axis=0)
+
+        # 对应 shape 中为 1 的维度也要 sum
+        for i in range(len(shape)):
+            if shape[i] == 1 and grad.shape[i] != 1:
+                grad = grad.sum(axis=i, keepdims=True)
+        return grad
     def __neg__(self) -> 'Tensor':
         result = Tensor(-self.data, requires_grad=self.requires_grad)
         
@@ -64,9 +77,11 @@ class Tensor:
         if result.requires_grad:
             def _backward(grad):
                 if self.requires_grad:
-                    self.backward(grad)
+                    grad_self = self.unbroadcast_to(grad, self.data.shape)
+                    self.backward(grad_self)
                 if other.requires_grad:
-                    other.backward(grad)
+                    grad_other = self.unbroadcast_to(grad, other.data.shape)
+                    other.backward(grad_other)
             result._grad_fn = _backward
             result.is_leaf = False
             

@@ -1,6 +1,6 @@
-from .ave_aggregate import avg_aggregate
+from .avg_aggregate import avg_aggregate
 
 
 aggregate_funcs = {
-    'avg': ave_aggregate
+    'avg': avg_aggregate
 }
