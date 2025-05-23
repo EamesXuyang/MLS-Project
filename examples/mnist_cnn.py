@@ -9,8 +9,9 @@ from fudanai.layers.linear import Linear
 from fudanai.activations.activation import ReLU
 from fudanai.losses.loss import CrossEntropyLoss
 from fudanai.optimizers.optimizer import Adam
+from fudanai.layers.base import Layer
 
-class CNN:
+class CNN(Layer):
     def __init__(self):
         self.conv1 = Conv2d(1, 32, kernel_size=3, stride=1, padding=1)
         self.conv2 = Conv2d(32, 64, kernel_size=3, stride=1, padding=1)
