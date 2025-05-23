@@ -20,11 +20,11 @@ FudanAI 是一个基于 NumPy 的深度学习框架，提供了类似 PyTorch �
 - 优化器：
   - SGD（支持动量）
   - Adam
-
+- 联邦学习
 
 ## 快速开始
 
-以下是一个简单的示例，展示如何使用 FudanAI 创建和训练一个神经网络：
+* 以下是一个简单的示例，展示如何使用 FudanAI 创建和训练一个神经网络：
 
 ```python
 import numpy as np
@@ -40,7 +40,7 @@ class SimpleModel:
         self.fc1 = Linear(10, 5)
         self.fc2 = Linear(5, 1)
         self.relu = ReLU()
-        
+    
     def forward(self, x):
         x = self.fc1(x)
         x = self.relu(x)
@@ -62,15 +62,19 @@ for epoch in range(100):
     # 前向传播
     pred = model.forward(X)
     loss = criterion(pred, y)
-    
+  
     # 反向传播
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
-    
+  
     if (epoch + 1) % 10 == 0:
         print(f"Epoch {epoch+1}, Loss: {loss.data:.4f}")
 ```
+
+* examples/fed_linear_regression.py 是一个联邦线性回归的示例，展示了如何使用 FudanAI 实现联邦学习。
+  * 首先使用python -m fudanai.fed.server.server以及python -m fudanai.fed.client.client启动服务器和客户端。
+  * 然后运行python fed_linear_regression.py即可进行联邦学习示例训练。
 
 更多示例可以在 `examples` 目录中找到。
 
@@ -90,5 +94,10 @@ fudanai/
 │   └── loss.py
 ├── optimizers/       # 优化器
 │   └── optimizer.py
+├── fed/       # 联邦学习实现
+│   ├── server    # 服务端
+│   ├── client    # 客户端
+│   ├── aggregate # 聚合方法
+│   └── task.py   # 创建并提交训练任务
 └── utils/           # 工具函数
 ```
