@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 import pickle
 from io import BytesIO
 import threading
@@ -27,7 +27,8 @@ def register_task():
     client = data.get('client')
 
     task = ClientTask(name, server, client, id)
-    tasks[id] = task
+    with lock:
+        tasks[id] = task
 
     requests.post(urljoin(server, f'/{name}/add_client'), json={'client': task.client, 'id': id})
     return jsonify({"message": f"Task {name}({id}) registered"}), 200
@@ -47,7 +48,6 @@ def send_init_params():
     with lock:
         task.init_params(epochs, params)
         cond  = conditions.get(id)
-
     if cond:
         with cond:
             cond.notify_all()
@@ -65,6 +65,7 @@ def get_init_params():
         if init_params is not None:
             epochs, params = init_params
             task.clean_params()
+            task.set_status(TaskStatus.RUNNING)
             return jsonify({"epochs": epochs, "params": params}), 200
         cond = conditions.setdefault(id, threading.Condition())
 
@@ -75,6 +76,7 @@ def get_init_params():
         init_params = task.get_init_params()
         epochs, params = init_params
         task.clean_params()
+        task.set_status(TaskStatus.RUNNING)
         return jsonify({"epochs": epochs, "params": params}), 200
     
 
@@ -87,10 +89,18 @@ def send_params_to_server():
     task = tasks.get(id)
 
     task_name = task.name
-    task.status = TaskStatus.WAITING
-    
+
     params = data.get('params')
+
+    with lock:
+        task.increase_completed_epoch() 
+        if task.check_finished():
+            task.set_status(TaskStatus.FINISHED)
+        else:
+            task.set_status(TaskStatus.WAITING)
+
     requests.post(urljoin(task.server, f'/{task_name}/update_client'), json={'params': params, 'id': id, 'client': task.client})
+
     return jsonify({"message": f"Task '{task_name}' parameters sent to server"}), 200
 
 
@@ -125,6 +135,7 @@ def get_params_from_server():
         params = task.get_params()
         if params is not None:
             task.clean_params()
+            task.set_status(TaskStatus.RUNNING)
             return jsonify({"params": params}), 200
         cond = conditions.setdefault(id, threading.Condition())
 
@@ -134,8 +145,34 @@ def get_params_from_server():
     with lock:
         params = task.get_params()
         task.clean_params()
+        task.set_status(TaskStatus.RUNNING)
         return jsonify({"params": params}), 200
 
+@app.route('/delete_task', methods=['DELETE'])
+def delete_task():
+    id = request.args.get('id')
+    if id not in tasks:
+        return jsonify({"error": "Task not found"}), 404
+    task = tasks.get(id)
+    task_name = task.name
+    del tasks[id]
+    return jsonify({"message": f"Task {task_name}({id}) deleted"}), 200
+
+@app.route('/list_tasks', methods=['GET'])
+def list_tasks():
+    with lock:
+        return [{
+            "name": task.name,
+            "id": task.task_id,
+            "status": task.get_status(),
+            "server": task.server,
+            "completed_epoch": task.completed_epoch,
+            "epochs": task.epochs
+        } for task in tasks.values()]
+
+@app.route("/")
+def dashboard():
+    return render_template("dashboard.html")
 
 if __name__ == '__main__':
     app.run(port=5001)

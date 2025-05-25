@@ -18,23 +18,20 @@ class ClientTask:
         self.client = client
         self.task_id = id
         self.params_buffer = None
+        self.completed_epoch = 0
         self.status = TaskStatus.INIT
 
     def init_params(self, epochs: int, params: Dict[str, Tensor]) -> None:
         self.epochs = epochs
         self.params_buffer = params
-        self.status = TaskStatus.WAITING
     
     def get_init_params(self) -> Optional[Tuple[int, Dict[str, Tensor]]]:
-        if self.status == TaskStatus.INIT:
+        if self.params_buffer is None:
             return None
         else:
-            self.stataus = TaskStatus.RUNNING
             return self.epochs, self.params_buffer
 
-
     def get_params(self) -> Optional[Dict[str, Tensor]]:
-        self.stataus = TaskStatus.RUNNING
         return self.params_buffer
     
     def clean_params(self) -> None:
@@ -42,3 +39,24 @@ class ClientTask:
 
     def set_params(self, params: Dict[str, Tensor]) -> None:
         self.params_buffer = params
+
+    def set_status(self, status: TaskStatus) -> None:
+        self.status = status
+
+    def get_status(self) -> str:
+        return self.task_status_to_text(self.status)
+    
+    def increase_completed_epoch(self) -> None:
+        self.completed_epoch += 1
+
+    def check_finished(self) -> bool:
+        return self.completed_epoch == self.epochs
+
+    @staticmethod
+    def task_status_to_text(status: TaskStatus) -> str:
+        return {
+            TaskStatus.INIT: "等待初始化参数",
+            TaskStatus.WAITING: "等待服务端聚合参数",
+            TaskStatus.RUNNING: "训练中",
+            TaskStatus.FINISHED: "训练完成"
+        }.get(status, "未知状态")

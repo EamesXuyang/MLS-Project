@@ -1,3 +1,4 @@
+import random
 import numpy as np
 import sys
 import os
@@ -9,7 +10,7 @@ from fudanai.layers.linear import Linear
 from fudanai.optimizers.optimizer import SGD
 from fudanai.fed.task import Task
 from fudanai.fed.util import encode_parameters, decode_parameters
-
+from time import sleep
 
 
 def generate_data(n_samples=100):
@@ -49,6 +50,7 @@ def train_local_func(epochs, model, trainloader):
             loss.backward()
             optimizer.step()
         avg_loss = total_loss / n_batches
+    sleep(random.uniform(5, 10))
     
 # python -m fudanai.fed.server.server
 # python -m fudanai.fed.client.client
@@ -63,7 +65,7 @@ def run_task():
 
 
 model = Linear(1, 1)
-requests.post('http://127.0.0.1:5000/create_task', json={"name": 'fed_linear_regression', 'client_num': 3, 'epochs': 50, 'aggregate_func': 'avg', 'params': encode_parameters(model.parameters()), 'client': "http://127.0.0.1:5001"})
+requests.post('http://127.0.0.1:5000/create_task', json={"name": 'fed_linear_regression', 'client_num': 3, 'epochs': 10, 'aggregate_func': 'avg', 'params': encode_parameters(model.parameters()), 'client': "http://127.0.0.1:5001"})
 
 thread0 = threading.Thread(target=run_task)
 thread1 = threading.Thread(target=run_task)
@@ -76,5 +78,3 @@ thread2.start()
 thread0.join()
 thread1.join()
 thread2.join()
-
-requests.delete("http://127.0.0.1:5000/delete_task", params={"name": 'fed_linear_regression'})

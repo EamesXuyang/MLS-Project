@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from urllib.parse import urljoin
 import requests
 from ..aggregate import aggregate_funcs
@@ -56,7 +56,7 @@ def update_client(task_name: str):
     tasks[task_name].update_client((client_url, id), params)
     return jsonify({
         "message": f"Client {client_url}({id}) updated",
-        "task_status": tasks[task_name].get_status().value
+        "task_status": tasks[task_name].get_status()
     }), 200
 
 @app.route('/<task_name>/status', methods=['GET'])
@@ -64,12 +64,7 @@ def task_status(task_name: str):
     if task_name not in tasks:
         return jsonify({"error": "Task not found"}), 404
 
-    task = tasks[task_name]
-    return jsonify({
-        "task": task.name,
-        "status": task.get_status(),
-        "completed_epoch": task.completed_epoch
-    }), 200
+    return jsonify(tasks[task_name].get_snapshot()), 200
 
 @app.route('/delete_task', methods=['DELETE'])
 def delete_task():
@@ -80,6 +75,13 @@ def delete_task():
     del tasks[task_name]
     return jsonify({"message": f"Task '{task_name}' deleted"}), 200
 
+@app.route('/list_tasks', methods=['GET'])
+def list_tasks():
+    return jsonify({"tasks": list(tasks.keys())}), 200
+
+@app.route('/')
+def dashboard():
+    return render_template('dashboard.html')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
