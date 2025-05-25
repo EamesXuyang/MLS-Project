@@ -2,9 +2,10 @@ from ..tensor import Tensor
 import numpy as np
 import base64
 import io
+from typing import Dict
 
 
-def decode_parameters(params):
+def decode_parameters(params: Dict[str, Tensor]) -> None:
     decode_params = {}
 
     for key, value in params.items():
@@ -12,7 +13,7 @@ def decode_parameters(params):
 
     return decode_params
 
-def encode_parameters(params):
+def encode_parameters(params: Dict[str, Tensor]) -> Dict[str, str]:
     encode_params = {}
 
     for key, value in params.items():

@@ -2,6 +2,7 @@ import numpy as np
 import sys
 import os
 import requests
+import threading
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from fudanai.tensor import Tensor
 from fudanai.layers.linear import Linear
@@ -47,21 +48,33 @@ def train_local_func(epochs, model, trainloader):
             optimizer.zero_grad()
             loss.backward()
             optimizer.step()
-        params = model.parameters()
-        for param in params:
-            print(f'{param}: {params[param].data}')
-            
         avg_loss = total_loss / n_batches
     
 # python -m fudanai.fed.server.server
 # python -m fudanai.fed.client.client
 
+def run_task():
+    model = Linear(1, 1)
+    task = Task('fed_linear_regression', server="http://127.0.0.1:5000/", client_port=5001, model=model, train_local_func=train_local_func, trainloader=generate_data)
+    task.run()
+    params = model.parameters()
+    for param in params:
+        print(f'{param}: {params[param].data}')
+
+
 model = Linear(1, 1)
-task = Task('fed_linear_regression', server="http://127.0.0.1:5000/", client_port=5001, model=model, train_local_func=train_local_func, trainloader=generate_data)
+requests.post('http://127.0.0.1:5000/create_task', json={"name": 'fed_linear_regression', 'client_num': 3, 'epochs': 50, 'aggregate_func': 'avg', 'params': encode_parameters(model.parameters()), 'client': "http://127.0.0.1:5001"})
 
-requests.post('http://127.0.0.1:5000/create_task', json={"name": 'fed_linear_regression', 'client_num': 1, 'epoch': 100, 'aggregate_func': 'avg', 'params': encode_parameters(model.parameters()), 'client': "http://127.0.0.1:5001"})
-task.run()
+thread0 = threading.Thread(target=run_task)
+thread1 = threading.Thread(target=run_task)
+thread2 = threading.Thread(target=run_task)
 
-params = model.parameters()
-for param in params:
-    print(f'{param}: {params[param].data}')
+thread0.start()
+thread1.start()
+thread2.start()
+
+thread0.join()
+thread1.join()
+thread2.join()
+
+requests.delete("http://127.0.0.1:5000/delete_task", params={"name": 'fed_linear_regression'})
