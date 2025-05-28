@@ -97,9 +97,11 @@ class Tensor:
         if result.requires_grad:
             def _backward(grad):
                 if self.requires_grad:
-                    self.backward(grad)
+                    grad_self = self.unbroadcast_to(grad, self.data.shape)
+                    self.backward(grad_self)
                 if other.requires_grad:
-                    other.backward(-grad)
+                    grad_other = self.unbroadcast_to(-grad, other.data.shape)
+                    other.backward(grad_other)
             result._grad_fn = _backward
             result.is_leaf = False
             
@@ -115,9 +117,11 @@ class Tensor:
         if result.requires_grad:
             def _backward(grad):
                 if self.requires_grad:
-                    self.backward(grad * other.data)
+                    grad_self = self.unbroadcast_to(grad * other.data, self.data.shape)
+                    self.backward(grad_self)
                 if other.requires_grad:
-                    other.backward(grad * self.data)
+                    grad_other = self.unbroadcast_to(grad * self.data, other.data.shape)
+                    other.backward(grad_other)
             result._grad_fn = _backward
             result.is_leaf = False
             
@@ -133,9 +137,11 @@ class Tensor:
         if result.requires_grad:
             def _backward(grad):
                 if self.requires_grad:
-                    self.backward(grad / other.data)
+                    grad_self = self.unbroadcast_to(grad / other.data, self.data.shape)
+                    self.backward(grad_self)
                 if other.requires_grad:
-                    other.backward(-grad * self.data / (other.data * other.data))
+                    grad_other = self.unbroadcast_to(-grad * self.data / ( other.data * other.data), other.data.shape)
+                    other.backward(grad_other)
             result._grad_fn = _backward
             result.is_leaf = False
             
@@ -152,9 +158,11 @@ class Tensor:
         if result.requires_grad:
             def _backward(grad):
                 if self.requires_grad:
-                    self.backward(grad * other.data * (self.data ** (other.data - 1)))
+                    grad_self = self.unbroadcast_to(grad * other.data * (self.data ** (other.data - 1)), self.data.shape)
+                    self.backward(grad_self)
                 if other.requires_grad:
-                    other.backward(grad * (self.data ** other.data) * np.log(self.data))
+                    grad_other = self.unbroadcast_to(grad * (self.data ** other.data) * np.log(self.data), other.data.shape)
+                    other.backward(grad_other)
             result._grad_fn = _backward
             result.is_leaf = False
             
