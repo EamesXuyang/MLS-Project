@@ -103,15 +103,88 @@ class Tensor:
     def dtype(self):
         return self.data.dtype
     
+    @staticmethod
+    def zeros(shape: Tuple[int, ...], requires_grad: bool = False, device: str = 'cpu') -> 'Tensor':
+        return Tensor(np.zeros(shape), requires_grad=requires_grad, device=device)
+
+    @staticmethod
+    def ones(shape: Tuple[int, ...], requires_grad: bool = False, device: str = 'cpu') -> 'Tensor':
+        return Tensor(np.ones(shape), requires_grad=requires_grad, device=device)
+    
+    @staticmethod
+    def maxiximum(a: 'Tensor', b: 'Tensor') -> 'Tensor':
+        result = Tensor(np.maximum(a.data, b.data), requires_grad=True, device=a.device)
+
+        if a.requires_grad or b.requires_grad:
+            def _backward(grad):
+                a.backward(grad * (a.data == result.data))
+                b.backward(grad * (b.data == result.data))
+            result._grad_fn = _backward
+            result.is_leaf = False
+        return result
+    
+    @staticmethod
+    def minimum(a: 'Tensor', b: 'Tensor') -> 'Tensor':
+        result = Tensor(np.minimum(a.data, b.data), requires_grad=True, device=a.device)
+
+        if a.requires_grad or b.requires_grad:
+            def _backward(grad):
+                a.backward(grad * (a.data == result.data))
+                b.backward(grad * (b.data == result.data))
+            result._grad_fn = _backward
+            result.is_leaf = False
+        return result
+    
+    @staticmethod
+    def concat(tensors: List['Tensor'], axis=0) -> 'Tensor':
+        Tensor._ensure_same_device(*tensors)
+        datas = [t.data for t in tensors]
+        result = Tensor(np.concatenate(datas, axis=axis), requires_grad=True, device=tensors[0].device)
+        xp = tensors[0].xp
+
+        if any(t.requires_grad for t in tensors):
+            def _backward(grad):
+                splits = xp.cumsum([t.shape[axis] for t in tensors])[:-1]
+                grads = xp.split(grad, splits, axis=axis)
+                for t, g in zip(tensors, grads):
+                    t.backward(g)
+            result._grad_fn = _backward
+            result.is_leaf = False
+
+        return result
+
+    @staticmethod
+    def stack(tensors: List['Tensor'], axis=0) -> 'Tensor':
+        Tensor._ensure_same_device(*tensors)
+        datas = [t.data for t in tensors]
+        result = Tensor(np.stack(datas, axis=axis), requires_grad=True, device=tensors[0].device)
+        xp = tensors[0].xp
+
+        if any(t.requires_grad for t in tensors):
+            def _backward(grad):
+                grads = xp.split(grad, grad.shape[axis], axis=axis)
+                grads = [xp.squeeze(g, axis=axis) for g in grads]
+                for t, g in zip(tensors, grads):
+                    t.backward(g)
+            result._grad_fn = _backward
+            result.is_leaf = False
+
+        return result
+
+
     def __repr__(self):
         return f"Tensor(data={self.data}, requires_grad={self.requires_grad}, device='{self.device}')"
 
-    def _ensure_same_device(self, other: 'Tensor'):
+    @staticmethod
+    def _ensure_same_device(*args):
         '''
-        检查两个 Tensor 是否在同一个设备上
+        检查Tensor是否在同一个设备上
         '''
-        if self.device != other.device:
-            raise ValueError(f'Tensor device mismatch: {self.device} vs {other.device}')
+        tensors = [arg for arg in args if isinstance(arg, Tensor)]
+        device = tensors[0].device
+        for tensor in tensors:
+            if tensor.device != device:
+                raise ValueError(f'Tensor device mismatch: {device} vs {tensor.device}')
         
     def backward(self, grad: Optional[Union[np.ndarray, cp.ndarray, np.generic]] = None):
         '''
@@ -185,7 +258,7 @@ class Tensor:
         实现 self + other
         '''
         other = other if isinstance(other, Tensor) else Tensor(other, device=self.device)
-        self._ensure_same_device(other)
+        Tensor._ensure_same_device(self, other)
 
         result = Tensor(self.data + other.data, requires_grad=self.requires_grad or other.requires_grad, device=self.device)
         
@@ -213,7 +286,7 @@ class Tensor:
         实现 self - other
         '''
         other = other if isinstance(other, Tensor) else Tensor(other, device=self.device)
-        self._ensure_same_device(other)
+        Tensor._ensure_same_device(self, other)
 
         result = Tensor(self.data - other.data, requires_grad=self.requires_grad or other.requires_grad, device=self.device)
         
@@ -241,7 +314,7 @@ class Tensor:
         实现 self * other
         '''
         other = other if isinstance(other, Tensor) else Tensor(other, device=self.device)
-        self._ensure_same_device(other)
+        Tensor._ensure_same_device(self, other)
 
         result = Tensor(self.data * other.data, requires_grad=self.requires_grad or other.requires_grad, device=self.device)
         
@@ -269,7 +342,7 @@ class Tensor:
         实现 self / other
         '''
         other = other if isinstance(other, Tensor) else Tensor(other, device=self.device)
-        self._ensure_same_device(other)
+        Tensor._ensure_same_device(self, other)
 
         result = Tensor(self.data / other.data, requires_grad=self.requires_grad or other.requires_grad, device=self.device)
         
@@ -298,7 +371,7 @@ class Tensor:
         实现 self ** other
         '''
         other = other if isinstance(other, Tensor) else Tensor(other, device=self.device)
-        self._ensure_same_device(other)
+        Tensor._ensure_same_device(self, other)
 
         result = Tensor(self.data ** other.data, requires_grad=self.requires_grad or other.requires_grad, device=self.device)
         
@@ -326,7 +399,7 @@ class Tensor:
         '''
         实现 self @ other
         '''
-        self._ensure_same_device(other)
+        Tensor._ensure_same_device(self, other)
         result = Tensor(self.data @ other.data, requires_grad=self.requires_grad or other.requires_grad)
         
         if result.requires_grad:
@@ -406,7 +479,7 @@ class Tensor:
             def _backward(grad):
                 if not keepdims and axis is not None:
                     grad = self.xp.expand_dims(grad, axis)
-                grad_expanded = self.xp.broadcast_to(grad, self.shape)
+                grad_expanded = self.xp.broadcast_to(grad, self.shape).copy()
                 self.backward(grad_expanded)
             result._grad_fn = _backward
             result.is_leaf = False
@@ -478,4 +551,80 @@ class Tensor:
             result._grad_fn = _backward
             result.is_leaf = False
 
+        return result
+
+    def chunk(self, chunks: int, axis: int=0) -> list['Tensor']:
+        data_chunks = self.xp.array_split(self.data, chunks, axis=axis)
+        results = [Tensor(chunk, requires_grad=self.requires_grad, device=self.device) for chunk in data_chunks]
+
+        if self.requires_grad:
+            grads_collected = [None] * chunks
+            call_count = [0]
+            def _backward(i):
+                def _inner(grad):
+                    grads_collected[i] = grad
+                    call_count[0] += 1
+                    if call_count[0] == chunks:
+                        grads = [g if g is not None else self.xp.zeros_like(data_chunks[i]) for i, g in enumerate(grads_collected)]
+                        self.backward(self.xp.concatenate(grads, axis=axis))
+                return _inner
+            for i, result in enumerate(results):
+                result._grad_fn = _backward(i)
+                result.is_leaf = False
+
+        return results
+
+    def sigmoid(self) -> 'Tensor':
+        result = Tensor(1 / (1 + self.xp.exp(-self.data)), requires_grad=self.requires_grad, device=self.device)
+
+        if result.requires_grad:
+            def _backward(grad):
+                self.backward(grad * result.data * (1 - result.data))
+            result._grad_fn = _backward
+            result.is_leaf = False
+        
+        return result
+
+    def sin(self) -> 'Tensor':
+        result = Tensor(self.xp.sin(self.data), requires_grad=self.requires_grad, device=self.device)
+
+        if result.requires_grad:
+            def _backward(grad):
+                self.backward(grad * self.xp.cos(self.data))
+            result._grad_fn = _backward
+            result.is_leaf = False
+
+        return result
+
+    def cos(self) -> 'Tensor':
+        result = Tensor(self.xp.cos(self.data), requires_grad=self.requires_grad, device=self.device)
+
+        if result.requires_grad:
+            def _backward(grad):
+                self.backward(grad * -self.xp.sin(self.data))
+            result._grad_fn = _backward
+            result.is_leaf = False
+
+        return result
+    
+    def tan(self) -> 'Tensor':
+        result = Tensor(self.xp.tan(self.data), requires_grad=self.requires_grad, device=self.device)
+
+        if result.requires_grad:
+            def _backward(grad):
+                self.backward(grad * (1 + self.data ** 2))
+            result._grad_fn = _backward
+            result.is_leaf = False
+
+        return result
+    
+    def tanh(self) -> 'Tensor':
+        result = Tensor(self.xp.tanh(self.data), requires_grad=self.requires_grad, device=self.device)
+
+        if result.requires_grad:
+            def _backward(grad):
+                self.backward(grad * (1 - result.data ** 2))
+            result._grad_fn = _backward
+            result.is_leaf = False
+        
         return result
