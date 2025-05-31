@@ -7,13 +7,6 @@ import torch
 from fudanai.tensor import Tensor
 from fudanai.layers.lstm import LSTM
 from fudanai.layers.base import Layer
-import numpy as np
-import sys
-import os
-
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from fudanai.tensor import Tensor
-from fudanai.layers.lstm import LSTM
 from fudanai.layers.linear import Linear
 from fudanai.losses.loss import MSELoss
 from fudanai.optimizers.optimizer import SGD  

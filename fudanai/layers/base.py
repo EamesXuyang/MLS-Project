@@ -8,11 +8,11 @@ class Layer:
         self.grads: Dict[str, Tensor] = {}
         self.training = True
         
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, *args) -> Tensor:
         raise NotImplementedError
         
-    def __call__(self, x: Tensor) -> Tensor:
-        return self.forward(x)
+    def __call__(self, *args) -> Tensor:
+        return self.forward(*args)
         
     def train(self):
         self.training = True

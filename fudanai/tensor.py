@@ -80,7 +80,7 @@ class Tensor:
         return result
 
     def __setitem__(self, idx, value):
-        if isinstance(value, 'Tensor'):
+        if isinstance(value, Tensor):
             value = value.data
         else:
             raise ValueError("Only Tensor can be assigned to Tensor")
@@ -104,6 +104,10 @@ class Tensor:
     @property
     def shape(self) -> Tuple:
         return self.data.shape
+    
+    @property
+    def size(self) -> int:
+        return self.data.size
         
     @property
     def dtype(self):
@@ -112,6 +116,10 @@ class Tensor:
     @staticmethod
     def zeros(shape: Tuple[int, ...], requires_grad: bool = False, device: str = 'cpu') -> 'Tensor':
         return Tensor(np.zeros(shape), requires_grad=requires_grad, device=device)
+    
+    @staticmethod
+    def ones(shape: Tuple[int, ...], requires_grad: bool = False, device: str = 'cpu') -> 'Tensor':
+        return Tensor(np.ones(shape), requires_grad=requires_grad, device=device)
 
     @staticmethod
     def ones(shape: Tuple[int, ...], requires_grad: bool = False, device: str = 'cpu') -> 'Tensor':
@@ -271,6 +279,14 @@ class Tensor:
             result.is_leaf = False
         
         return result
+    
+    def __eq__(self, other: Union['Tensor', float, int]) -> 'Tensor':
+        Tensor._ensure_same_device(self, other)
+        result = Tensor(self.data == (other.data if isinstance(other, Tensor) else other), device=self.device)
+        return result
+    
+    def __hash__(self):
+        return id(self)
         
     def __neg__(self) -> 'Tensor':
         '''
@@ -444,13 +460,26 @@ class Tensor:
         if result.requires_grad:
             def _backward(grad):
                 if self.requires_grad:
-                    self._backward_grad(grad @ other.data.T)
+                    self._backward_grad(grad @ other.data.swapaxes(-1, -2))
                 if other.requires_grad:
-                    other._backward_grad(self.data.T @ grad)
+                    other._backward_grad(self.data.swapaxes(-1, -2) @ grad)
             result._grad_fn = _backward
             result._prev = [self, other]
             result.is_leaf = False
-            
+
+        return result
+
+    def sqrt(self) -> 'Tensor':
+        result = Tensor(self.xp.sqrt(self.data), requires_grad=self.requires_grad, device=self.device)
+
+        if result.requires_grad:
+            def _backward(grad):
+                self._backward_grad(grad / (2 * result.data))
+
+            result._grad_fn = _backward
+            result._prev = [self]
+            result.is_leaf = False
+
         return result
 
     def log(self) -> 'Tensor':
@@ -495,6 +524,30 @@ class Tensor:
                         denom *= self.data.shape[ax]
                 grad_expanded = grad * self.xp.ones_like(self.data) / denom
                 self._backward_grad(grad_expanded)
+            result._grad_fn = _backward
+            result._prev = [self]
+            result.is_leaf = False
+
+        return result
+    
+    def var(self, axis=None, keepdims=False) -> 'Tensor':
+        mean = self.data.mean(axis=axis, keepdims=keepdims)
+        diff = self.data - mean
+        var_data = (diff ** 2).sum(axis=axis, keepdims=keepdims) / (self.data.shape[axis] - 1 if axis is not None else self.data.size - 1)
+        result = Tensor(var_data, requires_grad=self.requires_grad, device=self.device)
+
+        if result.requires_grad:
+            def _backward(grad):
+                n = self.data.shape[axis] if axis is not None else self.data.size
+                grad_expanded = grad
+                if not keepdims and axis is not None:
+                    if isinstance(axis, int):
+                        grad_expanded = self.xp.expand_dims(grad, axis)
+                    else:
+                        for ax in sorted(axis):
+                            grad_expanded = self.xp.expand_dims(grad_expanded, ax)
+                grad_input = grad_expanded * 2 / (n - 1) * diff
+                self._backward_grad(grad_input)
             result._grad_fn = _backward
             result._prev = [self]
             result.is_leaf = False
@@ -634,6 +687,17 @@ class Tensor:
                 result.is_leaf = False
 
         return results
+    
+    def masked_fill(self, mask: 'Tensor', value: Union[int, float]) -> 'Tensor':
+        result = Tensor(self.xp.where(mask.data, value, self.data), requires_grad=self.requires_grad, device=self.device)
+
+        if result.requires_grad:
+            def _backward(grad):
+                self._backward_grad(grad * mask.data)
+            result._grad_fn = _backward
+            result._prev = [self]
+
+        return result
 
     def sigmoid(self) -> 'Tensor':
         result = Tensor(1 / (1 + self.xp.exp(-self.data)), requires_grad=self.requires_grad, device=self.device)
