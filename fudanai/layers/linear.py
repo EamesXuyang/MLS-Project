@@ -19,7 +19,10 @@ class Linear(Layer):
                 requires_grad=True
             )
         else:
-            self.params["bias"] = None
+            self.params["bias"] = Tensor(
+                np.zeros(out_features),
+                requires_grad=False
+            )
             
     def forward(self, x: Tensor) -> Tensor:
         output = x @ self.params["weight"]

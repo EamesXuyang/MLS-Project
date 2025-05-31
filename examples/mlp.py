@@ -6,8 +6,10 @@ from fudanai.tensor import Tensor
 from fudanai.layers.linear import Linear
 from fudanai.optimizers.optimizer import Adam
 from fudanai.activations.activation import ReLU
+from fudanai.losses.loss import CrossEntropyLoss
+from fudanai.layers.base import Layer
 
-class MLP:
+class MLP(Layer):
     def __init__(self, input_size, hidden_size, output_size):
         self.fc1 = Linear(input_size, hidden_size)
         self.fc2 = Linear(hidden_size, hidden_size)
@@ -21,13 +23,6 @@ class MLP:
         x = self.relu(x)
         x = self.fc3(x)
         return x
-    
-    def parameters(self):
-        params = {}
-        params.update(self.fc1.parameters())
-        params.update(self.fc2.parameters())
-        params.update(self.fc3.parameters())
-        return params
 
 def generate_data(n_samples=1000):
     # 生成多分类数据
@@ -56,6 +51,7 @@ def main():
     
     # 创建优化器
     optimizer = Adam(model.parameters().values(), lr=0.001)
+    criterion = CrossEntropyLoss()
     
     # 训练循环
     n_epochs = 50
@@ -74,11 +70,10 @@ def main():
             
             # 前向传播
             logits = model.forward(x_batch)
-            probs = Tensor(softmax(logits.data))
             
             # 计算损失（交叉熵）
-            loss = -(y_batch * probs.log()).sum() / batch_size
-            total_loss += loss.data
+            loss = criterion(logits, y_batch)
+            total_loss = total_loss + loss.data.item()
             
             # 反向传播
             optimizer.zero_grad()

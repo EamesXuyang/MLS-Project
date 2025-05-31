@@ -30,6 +30,6 @@ class CrossEntropyLoss(Loss):
             target_indices = target
             
         # Calculate cross entropy loss
-        loss = (softmax_out[list(range(batch_size)), target_indices]).log().mean()
+        loss = (-(softmax_out[list(range(batch_size)), target_indices]).log()).mean()
             
         return loss

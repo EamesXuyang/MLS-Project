@@ -2,39 +2,43 @@ import numpy as np
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from fudanai.models.resnet import resnet18, resnet34
+from fudanai.models.resnet import resnet18
 from fudanai.tensor import Tensor
+from fudanai.losses.loss import CrossEntropyLoss  # 你需要实现或已有这个
+from fudanai.optimizers.optimizer import SGD            # 你需要实现或已有这个
 
-def test_resnet_forward():
-    # 创建一个随机输入张量：batch_size=2, channels=3, height=224, width=224
-    input_data = np.random.randn(2, 3, 224, 224).astype(np.float32)
-    input_tensor = Tensor(input_data, requires_grad=False)
+def generate_dummy_data(num_samples=30, num_classes=2, input_shape=(3, 32, 32)):
+    X = np.random.randn(num_samples, *input_shape).astype(np.float32)
+    y = np.random.randint(0, num_classes, size=(num_samples,))
+    return X, y
 
-    # 实例化模型
-    model18 = resnet18(num_classes=10)
-    print(model18.parameters().keys())
-    model34 = resnet34(num_classes=10)
-    print(model34.parameters().keys())
+def test_resnet_fit():
+    # 模拟数据
+    num_classes = 2
+    X_data, y_data = generate_dummy_data(num_samples=8, num_classes=num_classes)
+    
+    # 转成 Tensor
+    inputs = Tensor(X_data, requires_grad=True)
+    targets = y_data  # 注意：这里是整数标签
 
-    # 前向传播
-    output18 = model18(input_tensor)
-    output34 = model34(input_tensor)
+    # 模型、损失、优化器
+    model = resnet18(num_classes=num_classes, input_channels=3)
+    criterion = CrossEntropyLoss()
+    optimizer = SGD(model.parameters().values(), lr=0.01)
 
-    # 输出形状检查
-    assert output18.data.shape == (2, 10), f"resnet18 output shape mismatch: got {output18.data.shape}"
-    assert output34.data.shape == (2, 10), f"resnet34 output shape mismatch: got {output34.data.shape}"
+    # 简单训练 10 轮
+    for epoch in range(100):
+        outputs = model(inputs)
+        loss = criterion(outputs, targets)
+        
+        optimizer.zero_grad()
+        loss.backward()
+        optimizer.step()
 
-    print("ResNet18 and ResNet34 forward pass success.")
-    print("ResNet18 output:", output18.data)
-    print("ResNet34 output:", output34.data)
+        pred = np.argmax(outputs.data, axis=1)
+        acc = (pred == targets).mean()
 
-    # 测试反向传播是否报错
-    loss18 = output18.sum()
-    loss18.backward()  
-    loss34 = output34.sum()
-    loss34.backward() 
-
-    print("Backward pass successful.")
+        print(f"Epoch {epoch+1} | Loss: {loss.data:.4f} | Acc: {acc:.2f}")
 
 if __name__ == "__main__":
-    test_resnet_forward()
+    test_resnet_fit()
