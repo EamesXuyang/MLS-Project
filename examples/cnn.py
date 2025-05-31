@@ -42,8 +42,6 @@ class CNN(Layer):
         return x
 
 def load_mnist():
-    # This is a placeholder for actual MNIST data loading
-    # In real implementation, you would load the actual MNIST dataset
     X_train = np.random.randn(100, 1, 28, 28)
     y_train = np.random.randint(0, 10, size=100)
     return X_train, y_train
@@ -57,10 +55,7 @@ def main():
     criterion = CrossEntropyLoss()
     
     # Collect all parameters
-    params = []
-    for layer in [model.conv1, model.conv2, model.fc1, model.fc2]:
-        params.extend(layer.parameters().values())
-    
+    params = model.parameters().values()
     optimizer = Adam(params, lr=0.001)
     
     # Training loop

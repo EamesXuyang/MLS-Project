@@ -5,7 +5,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 import numpy as np
 import torch
 from fudanai.tensor import Tensor
-from fudanai.layers.lstm_v0 import LSTM as LSTMMy
+from fudanai.layers.lstm import LSTM as LSTMMy
 import torch
 import torch.nn as nn
 
@@ -55,7 +55,7 @@ class LSTMTorch(nn.Module):
         return torch.cat(outputs, dim=0), (h, c)
 
 def compare_lstm_output_and_grad():
-    seq_len, batch_size, input_size, hidden_size = 100, 2, 3, 4
+    seq_len, batch_size, input_size, hidden_size = 10000, 2, 3, 4
     np.random.seed(0)
     torch.manual_seed(0)
 

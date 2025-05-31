@@ -63,18 +63,18 @@ def run_task():
     for param in params:
         print(f'{param}: {params[param].data}')
 
+if __name__ == '__main__':
+    model = Linear(1, 1)
+    requests.post('http://127.0.0.1:5000/create_task', json={"name": 'fed_linear_regression', 'client_num': 3, 'epochs': 10, 'aggregate_func': 'avg', 'params': encode_parameters(model.parameters()), 'client': "http://127.0.0.1:5001"})
 
-model = Linear(1, 1)
-requests.post('http://127.0.0.1:5000/create_task', json={"name": 'fed_linear_regression', 'client_num': 3, 'epochs': 10, 'aggregate_func': 'avg', 'params': encode_parameters(model.parameters()), 'client': "http://127.0.0.1:5001"})
+    thread0 = threading.Thread(target=run_task)
+    thread1 = threading.Thread(target=run_task)
+    thread2 = threading.Thread(target=run_task)
 
-thread0 = threading.Thread(target=run_task)
-thread1 = threading.Thread(target=run_task)
-thread2 = threading.Thread(target=run_task)
+    thread0.start()
+    thread1.start()
+    thread2.start()
 
-thread0.start()
-thread1.start()
-thread2.start()
-
-thread0.join()
-thread1.join()
-thread2.join()
+    thread0.join()
+    thread1.join()
+    thread2.join()

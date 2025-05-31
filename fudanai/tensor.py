@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Union, Tuple, List, Optional
+from typing import Union, Tuple, List, Optional, Set, Dict
 
 try:
     import cupy as cp
@@ -38,8 +38,13 @@ class Tensor:
         
         self.requires_grad = requires_grad
         self.grad = None
+        self._grad = None # 单次反向传播的梯度
         self._grad_fn = None
+        self._prev = None
         self.is_leaf = True
+
+    def __repr__(self):
+        return f"Tensor(data={self.data}, requires_grad={self.requires_grad}, device='{self.device}')"
     
     def __getitem__(self, idx):
         if isinstance(idx, tuple):
@@ -66,9 +71,10 @@ class Tensor:
                 else:
                     full_grad[idx] = grad
 
-                self.backward(full_grad)
+                self._backward_grad(full_grad)
 
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
 
         return result
@@ -110,16 +116,80 @@ class Tensor:
     @staticmethod
     def ones(shape: Tuple[int, ...], requires_grad: bool = False, device: str = 'cpu') -> 'Tensor':
         return Tensor(np.ones(shape), requires_grad=requires_grad, device=device)
+
+    @staticmethod
+    def _ensure_same_device(*args):
+        '''
+        检查Tensor是否在同一个设备上
+        '''
+        tensors = [arg for arg in args if isinstance(arg, Tensor)]
+        device = tensors[0].device
+        for tensor in tensors:
+            if tensor.device != device:
+                raise ValueError(f'Tensor device mismatch: {device} vs {tensor.device}')
+        
+    @staticmethod
+    def _topological_sort(tensor: 'Tensor', visited: Set['Tensor'], order: List['Tensor']):
+        if tensor in visited:
+            return
+        visited.add(tensor)
+        if tensor._prev:
+            for parent in tensor._prev:
+                Tensor._topological_sort(parent, visited, order)
+        order.append(tensor)
+
+    def _update_grad(self, grad: Union[np.ndarray, cp.ndarray, np.generic]):
+        if self.grad is None:
+            self.grad = Tensor(grad, requires_grad=False, device=self.device)
+        else:
+            self.grad.data += grad
+
+    def _backward_grad(self, grad: Union[np.ndarray, cp.ndarray, np.generic]):
+        if self._grad is None:
+            self._grad = grad
+        else:
+            self._grad += grad
+            
+    def backward(self, grad: Optional[Union[np.ndarray, cp.ndarray, np.generic]] = None):
+        '''
+        通过前一节点返回的梯度计算当前节点的梯度，
+        并通过_grad_fn通知前驱节点的梯度信息便于其反向传播
+        '''
+        if not self.requires_grad:
+            return
+            
+        if self._grad is None:
+            if self.shape == ():  # scalar
+                self._grad = self.xp.array(1.0)
+            else:
+                raise RuntimeError("grad must be specified for non-scalar tensors")
+        
+        visited = set()
+        topo_order = []
+        Tensor._topological_sort(self, visited, topo_order)
+        for node in reversed(topo_order):
+            if node._grad_fn is not None:
+                node._grad_fn(node._grad)
+            if node.requires_grad:
+                node._update_grad(node._grad)
+            
+        for node in reversed(topo_order):
+            node._grad = None
+
+    def zero_grad(self):
+        if self.grad is not None:
+            self.grad.data.fill(0)
     
     @staticmethod
-    def maxiximum(a: 'Tensor', b: 'Tensor') -> 'Tensor':
+    def maximum(a: 'Tensor', b: 'Tensor') -> 'Tensor':
         result = Tensor(np.maximum(a.data, b.data), requires_grad=True, device=a.device)
 
         if a.requires_grad or b.requires_grad:
             def _backward(grad):
-                a.backward(grad * (a.data == result.data))
-                b.backward(grad * (b.data == result.data))
+                a._backward_grad(grad * (a.data == result.data))
+                b._backward_grad(grad * (b.data == result.data))
             result._grad_fn = _backward
+            result._prev = [a, b]
             result.is_leaf = False
         return result
     
@@ -129,9 +199,10 @@ class Tensor:
 
         if a.requires_grad or b.requires_grad:
             def _backward(grad):
-                a.backward(grad * (a.data == result.data))
-                b.backward(grad * (b.data == result.data))
+                a._backward_grad(grad * (a.data == result.data))
+                b._backward_grad(grad * (b.data == result.data))
             result._grad_fn = _backward
+            result._prev = [a, b]
             result.is_leaf = False
         return result
     
@@ -147,8 +218,9 @@ class Tensor:
                 splits = xp.cumsum([t.shape[axis] for t in tensors])[:-1]
                 grads = xp.split(grad, splits, axis=axis)
                 for t, g in zip(tensors, grads):
-                    t.backward(g)
+                    t._backward_grad(g)
             result._grad_fn = _backward
+            result._prev = tensors
             result.is_leaf = False
 
         return result
@@ -165,52 +237,12 @@ class Tensor:
                 grads = xp.split(grad, grad.shape[axis], axis=axis)
                 grads = [xp.squeeze(g, axis=axis) for g in grads]
                 for t, g in zip(tensors, grads):
-                    t.backward(g)
+                    t._backward_grad(g)
             result._grad_fn = _backward
+            result._prev = tensors
             result.is_leaf = False
 
         return result
-
-
-    def __repr__(self):
-        return f"Tensor(data={self.data}, requires_grad={self.requires_grad}, device='{self.device}')"
-
-    @staticmethod
-    def _ensure_same_device(*args):
-        '''
-        检查Tensor是否在同一个设备上
-        '''
-        tensors = [arg for arg in args if isinstance(arg, Tensor)]
-        device = tensors[0].device
-        for tensor in tensors:
-            if tensor.device != device:
-                raise ValueError(f'Tensor device mismatch: {device} vs {tensor.device}')
-        
-    def backward(self, grad: Optional[Union[np.ndarray, cp.ndarray, np.generic]] = None):
-        '''
-        通过前一节点返回的梯度计算当前节点的梯度，
-        并通过_grad_fn通知前驱节点的梯度信息便于其反向传播
-        '''
-        if not self.requires_grad:
-            return
-            
-        if grad is None:
-            if self.shape == ():  # scalar
-                grad = self.xp.array(1.0)
-            else:
-                raise RuntimeError("grad must be specified for non-scalar tensors")
-        
-        if self.grad is None:
-            self.grad = Tensor(grad, device=self.device)
-        else:
-            self.grad.data += grad
-            
-        if self._grad_fn is not None:
-            self._grad_fn(grad)
-            
-    def zero_grad(self):
-        if self.grad is not None:
-            self.grad.data.fill(0)
             
     def _unbroadcast_to(self, grad: Union[np.ndarray, cp.ndarray], shape: Tuple[int, ...]) -> Union[np.ndarray, cp.ndarray]:
         """
@@ -233,8 +265,9 @@ class Tensor:
         
         if self.requires_grad:
             def _backward(grad):
-                self.backward(grad.T)
+                self._backward_grad(grad.T)
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
         
         return result
@@ -247,8 +280,9 @@ class Tensor:
         
         if result.requires_grad:
             def _backward(grad):
-                self.backward(-grad)
+                self._backward_grad(-grad)
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
             
         return result
@@ -266,11 +300,12 @@ class Tensor:
             def _backward(grad):
                 if self.requires_grad:
                     grad_self = self._unbroadcast_to(grad, self.data.shape)
-                    self.backward(grad_self)
+                    self._backward_grad(grad_self)
                 if other.requires_grad:
                     grad_other = self._unbroadcast_to(grad, other.data.shape)
-                    other.backward(grad_other)
+                    other._backward_grad(grad_other)
             result._grad_fn = _backward
+            result._prev = [self, other]
             result.is_leaf = False
             
         return result
@@ -294,11 +329,12 @@ class Tensor:
             def _backward(grad):
                 if self.requires_grad:
                     grad_self = self._unbroadcast_to(grad, self.data.shape)
-                    self.backward(grad_self)
+                    self._backward_grad(grad_self)
                 if other.requires_grad:
                     grad_other = self._unbroadcast_to(-grad, other.data.shape)
-                    other.backward(grad_other)
+                    other._backward_grad(grad_other)
             result._grad_fn = _backward
+            result._prev = [self, other]
             result.is_leaf = False
             
         return result
@@ -322,11 +358,12 @@ class Tensor:
             def _backward(grad):
                 if self.requires_grad:
                     grad_self = self._unbroadcast_to(grad * other.data, self.data.shape)
-                    self.backward(grad_self)
+                    self._backward_grad(grad_self)
                 if other.requires_grad:
                     grad_other = self._unbroadcast_to(grad * self.data, other.data.shape)
-                    other.backward(grad_other)
+                    other._backward_grad(grad_other)
             result._grad_fn = _backward
+            result._prev = [self, other]
             result.is_leaf = False
             
         return result
@@ -350,11 +387,12 @@ class Tensor:
             def _backward(grad):
                 if self.requires_grad:
                     grad_self = self._unbroadcast_to(grad / other.data, self.data.shape)
-                    self.backward(grad_self)
+                    self._backward_grad(grad_self)
                 if other.requires_grad:
                     grad_other = self._unbroadcast_to(-grad * self.data / ( other.data * other.data), other.data.shape)
-                    other.backward(grad_other)
+                    other._backward_grad(grad_other)
             result._grad_fn = _backward
+            result._prev = [self, other]
             result.is_leaf = False
             
         return result
@@ -379,11 +417,12 @@ class Tensor:
             def _backward(grad):
                 if self.requires_grad:
                     grad_self = self._unbroadcast_to(grad * other.data * (self.data ** (other.data - 1)), self.data.shape)
-                    self.backward(grad_self)
+                    self._backward_grad(grad_self)
                 if other.requires_grad:
                     grad_other = self._unbroadcast_to(grad * (self.data ** other.data) * np.log(self.data), other.data.shape)
-                    other.backward(grad_other)
+                    other._backward_grad(grad_other)
             result._grad_fn = _backward
+            result._prev = [self, other]
             result.is_leaf = False
             
         return result
@@ -405,10 +444,11 @@ class Tensor:
         if result.requires_grad:
             def _backward(grad):
                 if self.requires_grad:
-                    self.backward(grad @ other.data.T)
+                    self._backward_grad(grad @ other.data.T)
                 if other.requires_grad:
-                    other.backward(self.data.T @ grad)
+                    other._backward_grad(self.data.T @ grad)
             result._grad_fn = _backward
+            result._prev = [self, other]
             result.is_leaf = False
             
         return result
@@ -418,8 +458,9 @@ class Tensor:
         
         if result.requires_grad:
             def _backward(grad):
-                self.backward(grad / self.data)
+                self._backward_grad(grad / self.data)
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
             
         return result
@@ -429,8 +470,9 @@ class Tensor:
 
         if result.requires_grad:
             def _backward(grad):
-                self.backward(grad * result.data)
+                self._backward_grad(grad * result.data)
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
 
         return result
@@ -452,8 +494,9 @@ class Tensor:
                     for ax in axis:
                         denom *= self.data.shape[ax]
                 grad_expanded = grad * self.xp.ones_like(self.data) / denom
-                self.backward(grad_expanded)
+                self._backward_grad(grad_expanded)
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
 
         return result
@@ -466,11 +509,21 @@ class Tensor:
                 if not keepdims and axis is not None:
                     grad = self.xp.expand_dims(grad, axis)
                 grad_expanded = self.xp.where(self.data == result.data, grad, 0)
-                self.backward(grad_expanded)
+                self._backward_grad(grad_expanded)
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
         
         return result
+
+    def argmax(self, axis=None, keepdims=False) -> 'Tensor':
+        data = self.data.argmax(axis=axis, keepdims=keepdims)
+        
+        if keepdims and axis is not None:
+            data = self.xp.expand_dims(data, axis)
+        
+        return Tensor(data, requires_grad=False, device=self.device)
+
         
     def sum(self, axis=None, keepdims=False) -> 'Tensor':
         result = Tensor(self.data.sum(axis=axis, keepdims=keepdims), requires_grad=self.requires_grad, device=self.device)
@@ -480,8 +533,9 @@ class Tensor:
                 if not keepdims and axis is not None:
                     grad = self.xp.expand_dims(grad, axis)
                 grad_expanded = self.xp.broadcast_to(grad, self.shape).copy()
-                self.backward(grad_expanded)
+                self._backward_grad(grad_expanded)
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
             
         return result 
@@ -491,8 +545,9 @@ class Tensor:
 
         if result.requires_grad:
             def _backward(grad):
-                self.backward(grad.reshape(self.shape))
+                self._backward_grad(grad.reshape(self.shape))
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
         
         return result
@@ -502,8 +557,9 @@ class Tensor:
 
         if result.requires_grad:
             def _backward(grad):
-                self.backward(grad.reshape(self.shape))
+                self._backward_grad(grad.reshape(self.shape))
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
 
         return result
@@ -513,8 +569,9 @@ class Tensor:
 
         if result.requires_grad:
             def _backward(grad):
-                self.backward(grad.reshape(self.shape))
+                self._backward_grad(grad.reshape(self.shape))
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
 
         return result
@@ -524,8 +581,9 @@ class Tensor:
 
         if result.requires_grad:
             def _backward(grad):
-                self.backward(self.xp.squeeze(grad, axis))
+                self._backward_grad(self.xp.squeeze(grad, axis))
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
 
         return result
@@ -535,8 +593,9 @@ class Tensor:
         
         if result.requires_grad:
             def _backward(grad):
-                self.backward(grad.swapaxes(*axes))
+                self._backward_grad(grad.swapaxes(*axes))
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
         
         return result
@@ -547,8 +606,9 @@ class Tensor:
         if result.requires_grad:
             def _backward(grad):
                 reverse_axes = [axes.index(i) for i in range(len(axes))]
-                self.backward(grad.transpose(reverse_axes))
+                self._backward_grad(grad.transpose(reverse_axes))
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
 
         return result
@@ -566,10 +626,11 @@ class Tensor:
                     call_count[0] += 1
                     if call_count[0] == chunks:
                         grads = [g if g is not None else self.xp.zeros_like(data_chunks[i]) for i, g in enumerate(grads_collected)]
-                        self.backward(self.xp.concatenate(grads, axis=axis))
+                        self._backward_grad(self.xp.concatenate(grads, axis=axis))
                 return _inner
             for i, result in enumerate(results):
                 result._grad_fn = _backward(i)
+                result._prev = [self]
                 result.is_leaf = False
 
         return results
@@ -579,8 +640,9 @@ class Tensor:
 
         if result.requires_grad:
             def _backward(grad):
-                self.backward(grad * result.data * (1 - result.data))
+                self._backward_grad(grad * result.data * (1 - result.data))
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
         
         return result
@@ -590,8 +652,9 @@ class Tensor:
 
         if result.requires_grad:
             def _backward(grad):
-                self.backward(grad * self.xp.cos(self.data))
+                self._backward_grad(grad * self.xp.cos(self.data))
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
 
         return result
@@ -601,8 +664,9 @@ class Tensor:
 
         if result.requires_grad:
             def _backward(grad):
-                self.backward(grad * -self.xp.sin(self.data))
+                self._backward_grad(grad * -self.xp.sin(self.data))
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
 
         return result
@@ -612,8 +676,9 @@ class Tensor:
 
         if result.requires_grad:
             def _backward(grad):
-                self.backward(grad * (1 + self.data ** 2))
+                self._backward_grad(grad * (1 + self.data ** 2))
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
 
         return result
@@ -623,8 +688,9 @@ class Tensor:
 
         if result.requires_grad:
             def _backward(grad):
-                self.backward(grad * (1 - result.data ** 2))
+                self._backward_grad(grad * (1 - result.data ** 2))
             result._grad_fn = _backward
+            result._prev = [self]
             result.is_leaf = False
         
         return result

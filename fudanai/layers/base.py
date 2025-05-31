@@ -3,6 +3,7 @@ from ..tensor import Tensor
 
 class Layer:
     def __init__(self):
+        # 用于注册参数中的Tensor，若类型为Layer则无需在此注册，可由parameters方法递归注册
         self.params: Dict[str, Tensor] = {}
         self.grads: Dict[str, Tensor] = {}
         self.training = True
@@ -30,11 +31,20 @@ class Layer:
                 key = f'{prefix}.{name}' if prefix else name
                 flat[key] = val
         
+        def recurse(obj, parent_prefix):
+            if isinstance(obj, Layer):
+                flat.update(obj.parameters(parent_prefix))
+            elif isinstance(obj, (list, tuple)):
+                for idx, item in enumerate(obj):
+                    recurse(item, f'{parent_prefix}.{idx}' if parent_prefix else f'{idx}')
+            elif isinstance(obj, dict):
+                for k, v in obj.items():
+                    recurse(v, f'{parent_prefix}.{k}' if parent_prefix else f'{k}')
+
         for attr_name, attr_val in self.__dict__.items():
-            if isinstance(attr_val, Layer) and attr_name != 'params':
-                sub_prefix = f'{prefix}.{attr_name}' if prefix else attr_name
-                sub_params = attr_val.parameters(sub_prefix)
-                flat.update(sub_params)
+            if attr_name == 'params':
+                continue
+            recurse(attr_val, f'{prefix}.{attr_name}' if prefix else attr_name)
         return flat
     
 
@@ -43,9 +53,17 @@ class Layer:
             keys = full_key.split('.')
             current = self
             for key in keys[:-1]:
-                if hasattr(current, key) and isinstance(getattr(current, key), Layer):
+                if isinstance(current, (list, tuple)):
+                    key = int(key)
+                    current = current[key]
+                elif isinstance(current, dict):
+                    current = current[key]
+                elif hasattr(current, key):
                     current = getattr(current, key)
                 else:
-                    raise KeyError(f'Cannot find Layer for key: {key} in path {full_key}')
+                    raise KeyError(f'Key {key} not found in {full_key}')
             last_key = keys[-1]
-            current.params[last_key].data = value.data
+            if isinstance(current, Layer) and last_key in current.params:
+                current.params[last_key].data = value.data
+            else:
+                raise KeyError(f'Key {last_key} not found in {full_key}')

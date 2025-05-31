@@ -86,16 +86,17 @@ class Conv2d(Layer):
                 if x.requires_grad:
                     dcol = grad.reshape(N * out_h * out_w, -1) @ self.params["weight"].data.reshape(self.out_channels, -1)
                     dx = self._col2im(dcol, x.data.shape)
-                    x.backward(dx)
+                    x._backward_grad(x)
                     
                 dw = x.data.transpose(1, 2, 3, 0).reshape(-1, N) @ grad.transpose(0, 2, 3, 1).reshape(N, -1)
-                self.params["weight"].backward(dw.reshape(self.params["weight"].shape))
+                self.params["weight"]._backward_grad(dw.reshape(self.params["weight"].shape))
                 
                 if self.params["bias"] is not None:
                     db = grad.sum(axis=(0, 2, 3))
-                    self.params["bias"].backward(db)
+                    self.params["bias"]._backward_grad(db)
                     
             result._grad_fn = _backward
+            result._prev = [x, self.params["weight"], self.params["bias"]]
             result.is_leaf = False
             
         return result 

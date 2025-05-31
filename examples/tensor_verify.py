@@ -25,14 +25,15 @@ def test_operation(name, func_fudan, func_torch, input_data, atol=1e-5):
     loss_fudan.backward()
     actual_grad = x_fudan.grad.data
 
-
-    if not np.allclose(actual_grad, expected_grad, atol=atol, equal_nan=True):
-        print(f"Expected grad (PyTorch):\n{expected_grad}")
-        print(f"Actual grad (FudanAI):\n{actual_grad}")
-        print(f"{name} failed! Max error: {np.abs(actual_grad - expected_grad).max()}")
-    else:
-        print(f"{name} passed.")
-
+    try:
+        if not np.allclose(actual_grad, expected_grad, atol=atol, equal_nan=True):
+            print(f"Expected grad (PyTorch):\n{expected_grad}")
+            print(f"Actual grad (FudanAI):\n{actual_grad}")
+            print(f"{name} failed! Max error: {np.abs(actual_grad - expected_grad).max()}")
+        else:
+            print(f"{name} passed.")
+    except Exception as e:
+        print(f'{name} error! Actual grad: {actual_grad}, Expected grad: {expected_grad}')
 
 if __name__ == "__main__":
     np.random.seed(42)

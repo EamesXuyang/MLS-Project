@@ -98,11 +98,12 @@ class BatchNorm2d(Layer):
                          2 * dvar * (x.data - mean.reshape(1, -1, 1, 1)) / (N * H * W) +
                          dmean / (N * H * W))
                     
-                    x.backward(dx)
-                    self.params["gamma"].backward(dgamma)
-                    self.params["beta"].backward(dbeta)
+                    x._backward_grad(dx)
+                    self.params["gamma"]._backward_grad(dgamma)
+                    self.params["beta"]._backward_grad(dbeta)
                     
             result._grad_fn = _backward
+            result._prev = [x, self.params["gamma"], self.params["beta"]]
             result.is_leaf = False
             
         return result 
