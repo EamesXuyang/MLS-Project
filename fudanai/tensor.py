@@ -460,9 +460,9 @@ class Tensor:
         if result.requires_grad:
             def _backward(grad):
                 if self.requires_grad:
-                    self._backward_grad(grad @ other.data.swapaxes(-1, -2))
+                    self._backward_grad(self._unbroadcast_to(grad @ other.data.swapaxes(-1, -2), self.shape))
                 if other.requires_grad:
-                    other._backward_grad(self.data.swapaxes(-1, -2) @ grad)
+                    other._backward_grad(self._unbroadcast_to(self.data.swapaxes(-1, -2) @ grad, other.shape))
             result._grad_fn = _backward
             result._prev = [self, other]
             result.is_leaf = False
