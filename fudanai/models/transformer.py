@@ -71,7 +71,7 @@ class MultiHeadAttention(Layer):
         k = k.reshape((B, -1, self.num_heads, self.d_k)).transpose((1, 2))
         v = v.reshape((B, -1, self.num_heads, self.d_k)).transpose((1, 2))
 
-        scores = q @ k.transpose((-2, -1)) / Tensor(self.d_k).sqrt()
+        scores = q @ k.transpose((-2, -1)) / Tensor(self.d_k, device=self.device).sqrt()
         if mask is not None:
             scores = scores.masked_fill(mask == 0, 1e-9)
         def softmax(y, axis=-1):
