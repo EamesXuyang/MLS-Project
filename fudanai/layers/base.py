@@ -22,7 +22,7 @@ class Layer:
         self.training = False
         
     def zero_grad(self):
-        for param in self.params.values():
+        for param in self.parameters().values():
             param.zero_grad()
 
     def to(self, device: str):
