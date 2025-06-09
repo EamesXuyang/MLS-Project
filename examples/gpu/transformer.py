@@ -62,4 +62,4 @@ for epoch in range(1, n_epochs + 1):
         print(f"[Epoch {epoch}] Loss: {loss.data}")
 end_time = time.time()
 
-print(f"多轮训练测试完成！, 耗时: {end_time - start_time} 秒")
+print(f"多轮训练测试完成, 耗时: {end_time - start_time} 秒")

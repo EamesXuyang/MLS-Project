@@ -5,7 +5,7 @@ from enum import Enum
 from ..util import encode_parameters, decode_parameters
 from typing import Callable, Dict, Tuple
 from ...tensor import Tensor
-from ..aggregate import aggregate_average, median_aggregate, prox_aggregate, trimmed_mean_aggregate, weighed_avg_aggregate
+from ..aggregate import avg_aggregate, median_aggregate, prox_aggregate, trimmed_mean_aggregate, weighed_avg_aggregate
 
 class ClientStatus(Enum):
     INIT = 0
