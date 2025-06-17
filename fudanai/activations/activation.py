@@ -1,21 +1,15 @@
 import numpy as np
 from ..tensor import Tensor
+from ..layers.base import Layer
 
-class Activation:
-    def forward(self, x: Tensor) -> Tensor:
-        raise NotImplementedError
-        
-    def __call__(self, x: Tensor) -> Tensor:
-        return self.forward(x)
-
-class ReLU(Activation):
+class ReLU(Layer):
     def forward(self, x: Tensor) -> Tensor:
         return Tensor.maximum(Tensor(0, device=x.device), x)
 
-class Sigmoid(Activation):
+class Sigmoid(Layer):
     def forward(self, x: Tensor) -> Tensor:
         return x.sigmoid()
 
-class Tanh(Activation):
+class Tanh(Layer):
     def forward(self, x: Tensor) -> Tensor:
         return x.tanh()
