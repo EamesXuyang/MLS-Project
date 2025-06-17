@@ -14,6 +14,7 @@ def test_operation(name, func_fudan, func_torch, input_data, atol=1e-5):
     # ==== PyTorch Part ====
     x_torch = torch.tensor(input_data, dtype=torch.float32, requires_grad=True)
     y_torch = func_torch(x_torch)
+    expected_output = y_torch.detach().numpy()
     loss_torch = y_torch.sum()
     loss_torch.backward()
     expected_grad = x_torch.grad.detach().numpy()
@@ -21,9 +22,16 @@ def test_operation(name, func_fudan, func_torch, input_data, atol=1e-5):
     # ==== FudanAI Tensor Part ====
     x_fudan = Tensor(input_data, requires_grad=True)
     y_fudan = func_fudan(x_fudan)
+    actual_output = y_fudan.data
     loss_fudan = y_fudan.sum()
     loss_fudan.backward()
     actual_grad = x_fudan.grad.data
+
+    try:
+        if not np.allclose(actual_output, expected_output, atol=atol, equal_nan=True):
+            print(f"{name} failed! Max error: {np.abs(actual_output - expected_output).max()}")
+    except Exception as e:
+        print(f'{name} error! Actual output: {actual_output}, Expected grad: {expected_output}')
 
     try:
         if not np.allclose(actual_grad, expected_grad, atol=atol, equal_nan=True):
