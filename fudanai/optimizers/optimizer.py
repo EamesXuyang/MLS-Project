@@ -2,6 +2,11 @@ from typing import Dict, List
 from ..tensor import Tensor
 from ..layers.base import Layer
 import numpy as np
+try:
+    import cupy as cp
+    HAS_CUPY = True
+except ImportError:
+    HAS_CUPY = False
 
 class Optimizer:
     def __init__(self, params: List[Tensor], lr: float = 0.01):
@@ -38,8 +43,12 @@ class Adam(Optimizer):
         super().__init__(params, lr)
         self.betas = betas
         self.eps = eps
-        self.m = [np.zeros_like(param.data) for param in params]  # First moment
-        self.v = [np.zeros_like(param.data) for param in params]  # Second moment
+        if params and next(iter(params)).device == 'cuda' and HAS_CUPY:
+            self.xp = cp
+        else:
+            self.xp = np
+        self.m = [self.xp.zeros_like(param.data) for param in params]  # First moment
+        self.v = [self.xp.zeros_like(param.data) for param in params]  # Second moment
         self.t = 0  # Time step
         
     def step(self):
@@ -54,4 +63,4 @@ class Adam(Optimizer):
                 m_hat = self.m[i] / (1 - self.betas[0] ** self.t)
                 v_hat = self.v[i] / (1 - self.betas[1] ** self.t)
                 
-                param.data -= self.lr * m_hat / (np.sqrt(v_hat) + self.eps) 
+                param.data -= self.lr * m_hat / (self.xp.sqrt(v_hat) + self.eps) 

@@ -5,6 +5,7 @@ from enum import Enum
 from ..util import encode_parameters, decode_parameters
 from typing import Callable, Dict, Tuple
 from ...tensor import Tensor
+from ..aggregate import avg_aggregate, median_aggregate, prox_aggregate, trimmed_mean_aggregate, weighed_avg_aggregate
 
 class ClientStatus(Enum):
     INIT = 0
@@ -53,7 +54,13 @@ class ServerTask:
             if all(self.clients[client] == ClientStatus.FINISHED for client in self.clients):
                 self.status = TaskStatus.AGGREGATING
 
-                self.params = self.aggregate_func(self.client_params)
+                # TODO
+                if self.aggregate_func is prox_aggregate:
+                    self.params = self.aggregate_func(self.client_params, self.params)
+                elif self.aggregate_func is weighed_avg_aggregate:
+                    self.params = self.aggregate_func(self.client_params, {client[1]: 1 / self.client_num for client in self.clients})
+                else:
+                    self.params = self.aggregate_func(self.client_params)
                 self.completed_epoch += 1
                 if self.completed_epoch < self.epochs:
                     for client in self.clients:

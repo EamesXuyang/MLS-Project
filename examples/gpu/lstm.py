@@ -1,8 +1,8 @@
-import time
 import numpy as np
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+import time
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../..')))
 import numpy as np
 import torch
 from fudanai.tensor import Tensor
@@ -14,6 +14,7 @@ from fudanai.optimizers.optimizer import SGD
 
 class SimpleLSTMModel(Layer):
     def __init__(self, input_size, hidden_size, output_size):
+        super().__init__()
         self.lstm = LSTM(input_size, hidden_size)
         self.fc = Linear(hidden_size, output_size)
 
@@ -29,14 +30,16 @@ def test_lstm_fit_sum():
     hidden_size, output_size = 128, 1
 
     model = SimpleLSTMModel(input_size, hidden_size, output_size)
+    model.to("cuda")
+
     criterion = MSELoss()
     optimizer = SGD(model.parameters().values(), lr=0.1)
 
     x_np = np.random.rand(seq_len, batch_size, input_size).astype(np.float32)
     y_np = np.sum(x_np, axis=0, keepdims=False).reshape(batch_size, output_size)
 
-    x = Tensor(x_np, requires_grad=True)
-    y_true = Tensor(y_np)
+    x = Tensor(x_np, requires_grad=True).to('cuda')
+    y_true = Tensor(y_np).to('cuda')
     
     start_time = time.time()
     for epoch in range(300):
